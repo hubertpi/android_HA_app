@@ -175,6 +175,7 @@ class FrontendViewModelTest {
             dialogManager = dialogManager,
         ),
         improvHandler: FrontendImprovHandler = this.improvHandler,
+        visitedPaths: FrontendVisitedPaths = FrontendVisitedPaths(),
     ): FrontendViewModel {
         return FrontendViewModel(
             initialServerId = serverId,
@@ -198,6 +199,7 @@ class FrontendViewModelTest {
             barcodeScannerHandler = FrontendBarcodeScannerHandler(externalBusRepository, dialogManager),
             matterThreadHandler = matterThreadHandler,
             keyChainRepository = keyChainRepository,
+            visitedPaths = visitedPaths,
         )
     }
 
@@ -1718,13 +1720,39 @@ class FrontendViewModelTest {
         val path = "/dashboard-main/living%20room"
         visitedUrl.captured("https://example.com$path?external_auth=1&local-only=value")
 
-        urlResults.emit(UrlLoadResult.Success(url = "https://cloud.example/?external_auth=1", serverId = serverId))
+        val remote = UrlLoadResult.Success(url = "https://cloud.example/?external_auth=1", serverId = serverId)
+        urlResults.emit(remote)
+        runCurrent()
+        assertEquals("https://cloud.example$path?external_auth=1", viewModel.viewState.value.url)
+
+        messageFlow.emit(FrontendHandlerEvent.Connected)
+        runCurrent()
+        visitedUrl.captured("https://cloud.example$path?external_auth=1")
+        advanceUntilIdle()
+        viewModel.onRetry()
+        runCurrent()
+        urlResults.emit(remote)
         runCurrent()
         assertEquals("https://cloud.example$path?external_auth=1", viewModel.viewState.value.url)
 
         urlResults.emit(UrlLoadResult.Success(url = testUrlWithAuth, serverId = serverId))
         runCurrent()
         assertEquals("https://example.com$path?external_auth=1", viewModel.viewState.value.url)
+    }
+
+    @Test
+    fun `Given a recreated frontend when connecting remotely then restore the previous dashboard`() = runTest {
+        val path = "/dashboard-main/living-room"
+        val cache = FrontendVisitedPaths().apply { this[serverId] = path }
+        val remote = "https://cloud.example/?external_auth=1"
+        every { urlManager.serverUrlFlow(any(), any()) } returns flowOf(
+            UrlLoadResult.Success(url = remote, serverId = serverId),
+        )
+        val viewModel = createViewModel(visitedPaths = cache)
+
+        runCurrent()
+
+        assertEquals("https://cloud.example$path?external_auth=1", viewModel.viewState.value.url)
     }
 
     @Nested

@@ -58,6 +58,7 @@ import io.homeassistant.companion.android.util.HAWebViewClientFactory
 import io.homeassistant.companion.android.util.LifecycleHandler
 import io.homeassistant.companion.android.util.hasSameOrigin
 import javax.inject.Inject
+import javax.inject.Singleton
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
@@ -83,7 +84,6 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import timber.log.Timber
 
@@ -103,6 +103,25 @@ private const val SECURITY_ALERT_URL = "https://www.home-assistant.io/latest-sec
  */
 private val FIRST_VIEW_EXCLUDED_URL_REGEX =
     """.*://.*/(config/(?!\bdashboard\b)|hassio)/*.*""".toRegex()
+
+/**
+ * Keeps the last visited frontend path for each server while the app process is alive.
+ * Accessed on the main thread by the frontend ViewModel.
+ */
+@Singleton
+internal class FrontendVisitedPaths @Inject constructor() {
+    private val paths = mutableMapOf<Int, String>()
+
+    operator fun get(serverId: Int): String? = paths[serverId]
+
+    operator fun set(serverId: Int, path: String) {
+        paths[serverId] = path
+    }
+
+    fun clear(serverId: Int) {
+        paths.remove(serverId)
+    }
+}
 
 /**
  * ViewModel for frontend screen.
@@ -135,6 +154,7 @@ internal class FrontendViewModel @VisibleForTesting constructor(
     private val barcodeScannerHandler: FrontendBarcodeScannerHandler,
     private val matterThreadHandler: FrontendMatterThreadHandler,
     private val keyChainRepository: KeyChainRepository,
+    private val visitedPaths: FrontendVisitedPaths = FrontendVisitedPaths(),
 ) : ViewModel(),
     FrontendConnectionErrorStateProvider {
 
@@ -160,6 +180,7 @@ internal class FrontendViewModel @VisibleForTesting constructor(
         barcodeScannerHandler: FrontendBarcodeScannerHandler,
         matterThreadHandler: FrontendMatterThreadHandler,
         keyChainRepository: KeyChainRepository,
+        visitedPaths: FrontendVisitedPaths,
     ) : this(
         initialServerId = savedStateHandle.toRoute<FrontendRoute>().serverId,
         initialTarget = savedStateHandle.toRoute<FrontendRoute>().target,
@@ -182,6 +203,7 @@ internal class FrontendViewModel @VisibleForTesting constructor(
         barcodeScannerHandler = barcodeScannerHandler,
         matterThreadHandler = matterThreadHandler,
         keyChainRepository = keyChainRepository,
+        visitedPaths = visitedPaths,
     )
 
     /**
@@ -264,10 +286,6 @@ internal class FrontendViewModel @VisibleForTesting constructor(
         scope = viewModelScope,
         stateProvider = { BridgeState(serverId = viewState.value.serverId, url = viewState.value.url) },
     )
-
-    private data class VisitedFrontendPage(val serverId: Int, val url: HttpUrl)
-
-    private var visitedFrontendPage: VisitedFrontendPage? = null
 
     private val webViewClient = SuspendLazy {
         webViewClientFactory.create(
@@ -748,6 +766,7 @@ internal class FrontendViewModel @VisibleForTesting constructor(
      * the case where one of our own activities (e.g. NFC write) came to the foreground.
      */
     fun onLeavingApp(currentUrl: String?) {
+        currentUrl?.let(::rememberVisitedFrontendPage)
         viewModelScope.launch {
             if (!prefsRepository.isAlwaysShowFirstViewOnAppStartEnabled()) return@launch
             if (!LifecycleHandler.isAppInBackground()) return@launch
@@ -798,6 +817,7 @@ internal class FrontendViewModel @VisibleForTesting constructor(
      * the navigation lands.
      */
     private suspend fun navigateToDefaultDashboard(serverId: Int) {
+        visitedPaths.clear(serverId)
         val clearHistory = WebViewAction.ClearHistory()
         _webViewActions.emit(clearHistory)
         clearHistory.await()
@@ -1032,21 +1052,18 @@ internal class FrontendViewModel @VisibleForTesting constructor(
         val visitedUrl = url.toHttpUrlOrNull() ?: return
         val requestedUrl = state.url?.toHttpUrlOrNull() ?: return
         if (state is FrontendViewState.Content && visitedUrl.hasSameOrigin(requestedUrl)) {
-            visitedFrontendPage = VisitedFrontendPage(state.serverId, visitedUrl)
+            visitedPaths[state.serverId] = visitedUrl.encodedPath
         }
     }
 
-    private fun restorePathOnOriginChange(result: UrlLoadResult.Success, state: FrontendViewState): String {
-        val visitedPage = visitedFrontendPage ?: return result.url
-        if (visitedPage.serverId != result.serverId || state.pendingTarget != FrontendTarget.Default) return result.url
-
+    private fun restoreVisitedPath(result: UrlLoadResult.Success, state: FrontendViewState): String {
+        if (state.pendingTarget != FrontendTarget.Default) return result.url
+        val path = visitedPaths[result.serverId] ?: return result.url
         val destination = result.url.toHttpUrlOrNull() ?: return result.url
-        val previousRequest = state.url?.toHttpUrlOrNull() ?: visitedPage.url
-        if (destination.hasSameOrigin(previousRequest) && destination.hasSameOrigin(visitedPage.url)) return result.url
 
-        // Keep the destination's origin and auth parameters. Query parameters from the old
-        // origin can contain credentials, so only restore the frontend path.
-        return destination.newBuilder().encodedPath(visitedPage.url.encodedPath).build().toString()
+        // An interrupted handoff can retry on the same origin. Restore the path on
+        // default loads and keep the destination's own authentication parameters.
+        return destination.newBuilder().encodedPath(path).build().toString()
     }
 
     private suspend fun handleUrlResult(result: UrlLoadResult) {
@@ -1056,7 +1073,7 @@ internal class FrontendViewModel @VisibleForTesting constructor(
                 _viewState.update { currentState ->
                     FrontendViewState.Loading(
                         serverId = result.serverId,
-                        url = restorePathOnOriginChange(result, currentState),
+                        url = restoreVisitedPath(result, currentState),
                         target = currentState.pendingTarget,
                     )
                 }
