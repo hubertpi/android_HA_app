@@ -42,6 +42,7 @@ import io.homeassistant.companion.android.authenticator.Authenticator.Companion.
 import io.homeassistant.companion.android.changelog.navigation.ChangelogAutoShowEffect
 import io.homeassistant.companion.android.common.R as commonR
 import io.homeassistant.companion.android.common.compose.theme.HATheme
+import io.homeassistant.companion.android.common.data.servers.ServerManager
 import io.homeassistant.companion.android.common.sensors.SensorWorker
 import io.homeassistant.companion.android.common.util.CheckLocalNetworkPermissionUseCase
 import io.homeassistant.companion.android.common.util.SdkVersion
@@ -90,6 +91,9 @@ private const val LOCK_SCREEN_ALIAS_CLASS = "io.homeassistant.companion.android.
 class LaunchActivity : AppCompatActivity() {
     @Inject
     internal lateinit var playServicesAvailability: PlayServicesAvailability
+
+    @Inject
+    internal lateinit var serverManager: ServerManager
 
     @Inject
     internal lateinit var checkLocationDisabled: CheckLocationDisabledUseCase
@@ -217,6 +221,7 @@ class LaunchActivity : AppCompatActivity() {
                 )
 
                 ChangelogAutoShowEffect(navController)
+                ForkUpdatePrompt(serverManager, enabled = uiState is LaunchUiState.Ready && !isAppLocked)
 
                 HAApp(
                     navController = navController,

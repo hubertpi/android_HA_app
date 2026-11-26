@@ -40,6 +40,9 @@
     <string name="app_name">Home Assistant</string>
     <string name="play_services_unavailable_full_flavor">Google Play services are unavailable. This version of the app may crash. Use the minimal version instead.</string>
     <string name="app_version_info">App version info</string>
+    <string name="fork_update_title">Home Assistant fork update available</string>
+    <string name="fork_update_message">A newer build of your Home Assistant fork is ready to install.</string>
+    <string name="fork_update_later">Later</string>
     <string name="application_version">Application version</string>
     <string name="attempting_authentication">Authenticating…</string>
     <string name="attempting_connection">Connecting…</string>

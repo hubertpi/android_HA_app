@@ -17,7 +17,9 @@ jobs:
           mock-google-services: 'true'
           cache-disabled: 'true'
           cache-encryption-key: ''
-      - run: ./gradlew :app:testMinimalDebugUnitTest --tests '*FrontendViewModelTest' :app:assembleMinimalDebug -PnoStrictMode
+      - run: ./gradlew :app:testMinimalDebugUnitTest --tests '*FrontendViewModelTest' --tests '*ForkUpdatePromptTest' :app:assembleMinimalDebug -PnoStrictMode
+        env:
+          VERSION_CODE: ${{ github.run_number }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: home-assistant-fork
