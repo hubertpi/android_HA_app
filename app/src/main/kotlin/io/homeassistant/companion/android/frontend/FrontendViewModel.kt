@@ -867,9 +867,11 @@ internal class FrontendViewModel @VisibleForTesting constructor(
         val state = _viewState.value
         if (state !is FrontendViewState.Loading) return
 
+        Timber.tag("HADashboardLoad").d("Load deadline, bridgeConnected=%s", state.connected)
         if (state.connected) {
             showContent()
         } else {
+            _webViewActions.tryEmit(WebViewAction.LogDashboardState())
             onError(FrontendConnectionError.ExternalBusTimeout)
         }
     }
@@ -917,13 +919,19 @@ internal class FrontendViewModel @VisibleForTesting constructor(
 
     private suspend fun handleMessageResult(result: FrontendHandlerEvent) {
         when (result) {
-            is FrontendHandlerEvent.Connected -> onConnected()
+            is FrontendHandlerEvent.Connected -> {
+                Timber.tag("HADashboardLoad").d("Bridge connected")
+                onConnected()
+            }
 
             is FrontendHandlerEvent.Disconnected -> {
                 // Disconnection handling not yet implemented
                 Timber.d("Frontend external bus disconnected")
             }
-            is FrontendHandlerEvent.Loaded -> showContent()
+            is FrontendHandlerEvent.Loaded -> {
+                Timber.tag("HADashboardLoad").d("Frontend reported loaded")
+                showContent()
+            }
 
             is FrontendHandlerEvent.ThemeUpdated -> {
                 viewModelScope.launch { updateThemeColors() }

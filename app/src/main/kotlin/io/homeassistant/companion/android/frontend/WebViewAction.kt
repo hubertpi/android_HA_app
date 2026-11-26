@@ -91,6 +91,32 @@ sealed interface WebViewAction {
         }
     }
 
+    /** Records a fixed set of WebView bootstrap flags without collecting page content. */
+    @EvaluateJavascriptUsage
+    class LogDashboardState : WebViewAction {
+        override fun run(webView: WebView) {
+            val log = Timber.tag("HADashboardLoad")
+            log.d("Timeout probe dispatched")
+            webView.evaluateJavascript(
+                """
+                (() => [
+                    ["loading", "interactive", "complete"].indexOf(document.readyState),
+                    Number(typeof window.externalAppV2?.postMessage === "function"),
+                    Number(!!customElements.get("home-assistant")),
+                    Number(!!document.querySelector("home-assistant")?.hass)
+                ])()
+                """.trimIndent(),
+            ) { result ->
+                val flags = result?.replace(" ", "")?.takeIf { PROBE_FLAGS.matches(it) }
+                log.d("Timeout probe [readyStateIndex,bridge,element,connected]: %s", flags ?: "unavailable")
+            }
+        }
+
+        private companion object {
+            val PROBE_FLAGS = Regex("""\[-?[012](,[01]){3}\]""")
+        }
+    }
+
     /** Reload the current page. */
     class Reload : AwaitableAction<Unit>() {
         override fun run(webView: WebView) {

@@ -139,6 +139,7 @@ class HAWebViewClient internal constructor(
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
         super.onPageStarted(view, url, favicon)
+        Timber.tag("HADashboardLoad").d("Page started, blank=%s", url == "about:blank")
         val onCanGoBackChanged = onCanGoBackChanged
         if (view != null && onCanGoBackChanged != null && historyObservedWebView?.get() !== view) {
             historyObservedWebView = WeakReference(view)
@@ -153,6 +154,7 @@ class HAWebViewClient internal constructor(
 
     override fun onPageFinished(view: WebView?, url: String?) {
         super.onPageFinished(view, url)
+        Timber.tag("HADashboardLoad").d("Page finished, blank=%s", url == "about:blank")
         onPageFinished?.invoke(url)
     }
 
@@ -178,6 +180,7 @@ class HAWebViewClient internal constructor(
 
     override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
         super.onReceivedError(view, request, error)
+        Timber.tag("HADashboardLoad").d("Resource error, mainFrame=%s code=%s", request?.isForMainFrame, error?.errorCode)
 
         // Only handle errors for the main URL being loaded
         if (request?.url?.toString() != currentUrlFlow.value) return
@@ -245,6 +248,7 @@ class HAWebViewClient internal constructor(
         errorResponse: WebResourceResponse?,
     ) {
         super.onReceivedHttpError(view, request, errorResponse)
+        Timber.tag("HADashboardLoad").d("HTTP error, mainFrame=%s status=%s", request?.isForMainFrame, errorResponse?.statusCode)
 
         // Only handle errors for the main URL being loaded
         if (request?.url?.toString() != currentUrlFlow.value) return
