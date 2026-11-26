@@ -861,6 +861,8 @@ internal class FrontendViewModel @VisibleForTesting constructor(
      * When the handshake is done ([FrontendViewState.Loading.connected]) but the frontend never reports
      * that it finished rendering, the content is shown anyway.
      */
+    // The missing external bus cannot report its own bootstrap state after this timeout.
+    @OptIn(EvaluateJavascriptUsage::class)
     private suspend fun watchLoadingTimeout() {
         delay(CONNECTION_TIMEOUT)
 
