@@ -17,11 +17,11 @@ jobs:
           mock-google-services: 'true'
           cache-disabled: 'true'
           cache-encryption-key: ''
-      - run: ./gradlew :app:testMinimalDebugUnitTest --tests '*FrontendViewModelTest' --tests '*ForkUpdatePromptTest' :app:assembleMinimalDebug -PnoStrictMode
+      - run: ./gradlew :app:testFullDebugUnitTest --tests '*FrontendViewModelTest' --tests '*ForkUpdatePromptTest' :app:assembleFullDebug -PnoStrictMode -PforkDistribution
         env:
           VERSION_CODE: ${{ github.run_number }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: home-assistant-fork
-          path: app/build/outputs/apk/minimal/debug/*.apk
+          path: app/build/outputs/apk/full/debug/*.apk
           if-no-files-found: error

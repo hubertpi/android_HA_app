@@ -22,6 +22,13 @@ android {
         }
     }
 
+    // Keep the installed fork's package and data when moving from minimal to full.
+    if (providers.gradleProperty("forkDistribution").isPresent) {
+        productFlavors.named("full") {
+            applicationId = "io.homeassistant.companion.android.minimal"
+        }
+    }
+
     buildTypes {
         debug {
             // Required for HWASan wrap.sh to be included uncompressed in the APK
