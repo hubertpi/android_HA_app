@@ -73,6 +73,7 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.runs
+import io.mockk.slot
 import io.mockk.unmockkStatic
 import io.mockk.verify
 import kotlin.time.Duration.Companion.minutes
@@ -223,6 +224,7 @@ class FrontendViewModelTest {
                     onReceivedHttpAuthRequest = any(),
                     onCanGoBackChanged = any(),
                     onSubresourceSslError = any(),
+                    onVisitedUrlChanged = any(),
                 )
             } answers {
                 // onUrlIntercepted is at parameter index 3 in HAWebViewClientFactory.create
@@ -1391,6 +1393,7 @@ class FrontendViewModelTest {
                     onReceivedHttpAuthRequest = any(),
                     onCanGoBackChanged = any(),
                     onSubresourceSslError = any(),
+                    onVisitedUrlChanged = any(),
                 )
             } answers {
                 // onPageFinished is at parameter index 4 in HAWebViewClientFactory.create
@@ -1529,6 +1532,7 @@ class FrontendViewModelTest {
                     onReceivedHttpAuthRequest = any(),
                     onCanGoBackChanged = any(),
                     onSubresourceSslError = any(),
+                    onVisitedUrlChanged = any(),
                 )
             } answers {
                 capturedCallback = arg(5)
@@ -1633,6 +1637,7 @@ class FrontendViewModelTest {
                     onReceivedHttpAuthRequest = any(),
                     onCanGoBackChanged = any(),
                     onSubresourceSslError = any(),
+                    onVisitedUrlChanged = any(),
                 )
             } answers {
                 // onSubresourceSslError is at parameter index 7 in HAWebViewClientFactory.create
@@ -1680,6 +1685,48 @@ class FrontendViewModelTest {
         }
     }
 
+    @Test
+    fun `Given a visited dashboard when the connection changes then keep its path on the new origin`() = runTest {
+        val messageFlow = MutableSharedFlow<FrontendHandlerEvent>()
+        val urlResults = MutableSharedFlow<UrlLoadResult>()
+        every { frontendBusObserver.messageResults() } returns messageFlow
+        every { urlManager.serverUrlFlow(any(), any()) } returns urlResults
+        val visitedUrl = slot<(String) -> Unit>()
+        coEvery {
+            webViewClientFactory.create(
+                currentUrlFlow = any(),
+                onFrontendError = any(),
+                onCrash = any(),
+                onUrlIntercepted = any(),
+                onPageFinished = any(),
+                onReceivedHttpAuthRequest = any(),
+                onCanGoBackChanged = any(),
+                onSubresourceSslError = any(),
+                onVisitedUrlChanged = capture(visitedUrl),
+            )
+        } returns mockk(relaxed = true)
+
+        val viewModel = createViewModel()
+        viewModel.getWebViewClient()
+        runCurrent()
+        urlResults.emit(UrlLoadResult.Success(url = testUrlWithAuth, serverId = serverId))
+        runCurrent()
+        messageFlow.emit(FrontendHandlerEvent.Connected)
+        advanceUntilIdle()
+        assertInstanceOf(FrontendViewState.Content::class.java, viewModel.viewState.value)
+
+        val path = "/dashboard-main/living%20room"
+        visitedUrl.captured("https://example.com$path?external_auth=1&local-only=value")
+
+        urlResults.emit(UrlLoadResult.Success(url = "https://cloud.example/?external_auth=1", serverId = serverId))
+        runCurrent()
+        assertEquals("https://cloud.example$path?external_auth=1", viewModel.viewState.value.url)
+
+        urlResults.emit(UrlLoadResult.Success(url = testUrlWithAuth, serverId = serverId))
+        runCurrent()
+        assertEquals("https://example.com$path?external_auth=1", viewModel.viewState.value.url)
+    }
+
     @Nested
     inner class BackNavigation {
 
@@ -1695,6 +1742,7 @@ class FrontendViewModelTest {
                     onReceivedHttpAuthRequest = any(),
                     onCanGoBackChanged = any(),
                     onSubresourceSslError = any(),
+                    onVisitedUrlChanged = any(),
                 )
             } answers {
                 // onCanGoBackChanged is at parameter index 6 in HAWebViewClientFactory.create

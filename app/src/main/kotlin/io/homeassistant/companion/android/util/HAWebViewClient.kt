@@ -67,6 +67,7 @@ class HAWebViewClientFactory @Inject constructor(private val keyChainRepository:
      * @param onCanGoBackChanged Optional callback invoked when the WebView back/forward list changes,
      *        reporting whether the WebView can currently navigate back. Covers navigations inside
      *        iframes too, when the WebView supports it.
+     * @param onVisitedUrlChanged Optional callback when the main WebView updates its navigation history.
      * @param onSubresourceSslError Optional callback when an SSL error occurs on a resource other than
      *        the main URL being loaded. Receives the URL of the failing resource. The frontend itself
      *        is unaffected, so this is a notice rather than a connection error.
@@ -87,6 +88,7 @@ class HAWebViewClientFactory @Inject constructor(private val keyChainRepository:
         )? = null,
         onCanGoBackChanged: ((canGoBack: Boolean) -> Unit)? = null,
         onSubresourceSslError: ((url: String?) -> Unit)? = null,
+        onVisitedUrlChanged: ((url: String) -> Unit)? = null,
     ): HAWebViewClient {
         return HAWebViewClient(
             keyChainRepository = keyChainRepository,
@@ -99,6 +101,7 @@ class HAWebViewClientFactory @Inject constructor(private val keyChainRepository:
             onReceivedHttpAuthRequest = onReceivedHttpAuthRequest,
             onCanGoBackChanged = onCanGoBackChanged,
             onSubresourceSslError = onSubresourceSslError,
+            onVisitedUrlChanged = onVisitedUrlChanged,
         )
     }
 }
@@ -122,6 +125,7 @@ class HAWebViewClient internal constructor(
     )?,
     private val onCanGoBackChanged: ((canGoBack: Boolean) -> Unit)? = null,
     private val onSubresourceSslError: ((url: String?) -> Unit)? = null,
+    private val onVisitedUrlChanged: ((url: String) -> Unit)? = null,
 ) : TLSWebViewClient(keyChainRepository, clientCertProvider) {
 
     /** Last resource URL loaded by the WebView, used to identify the resource requesting auth. */
@@ -154,6 +158,7 @@ class HAWebViewClient internal constructor(
 
     override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
         super.doUpdateVisitedHistory(view, url, isReload)
+        url?.let { onVisitedUrlChanged?.invoke(it) }
         view?.let { onCanGoBackChanged?.invoke(it.canGoBack()) }
     }
 

@@ -83,6 +83,7 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import timber.log.Timber
 
@@ -264,12 +265,17 @@ internal class FrontendViewModel @VisibleForTesting constructor(
         stateProvider = { BridgeState(serverId = viewState.value.serverId, url = viewState.value.url) },
     )
 
+    private data class VisitedFrontendPage(val serverId: Int, val url: HttpUrl)
+
+    private var visitedFrontendPage: VisitedFrontendPage? = null
+
     private val webViewClient = SuspendLazy {
         webViewClientFactory.create(
             currentUrlFlow = urlFlow,
             onFrontendError = ::onError,
             onCrash = ::onRetry,
             onPageFinished = ::onPageFinished,
+            onVisitedUrlChanged = ::rememberVisitedFrontendPage,
             onUrlIntercepted = { uri, _ -> onUrlIntercepted(uri) },
             onReceivedHttpAuthRequest = { handler, host, resource, realm ->
                 viewModelScope.launch {
@@ -1021,6 +1027,28 @@ internal class FrontendViewModel @VisibleForTesting constructor(
      *
      * @param result The URL load result to handle
      */
+    private fun rememberVisitedFrontendPage(url: String) {
+        val state = _viewState.value
+        val visitedUrl = url.toHttpUrlOrNull() ?: return
+        val requestedUrl = state.url?.toHttpUrlOrNull() ?: return
+        if (state is FrontendViewState.Content && visitedUrl.hasSameOrigin(requestedUrl)) {
+            visitedFrontendPage = VisitedFrontendPage(state.serverId, visitedUrl)
+        }
+    }
+
+    private fun restorePathOnOriginChange(result: UrlLoadResult.Success, state: FrontendViewState): String {
+        val visitedPage = visitedFrontendPage ?: return result.url
+        if (visitedPage.serverId != result.serverId || state.pendingTarget != FrontendTarget.Default) return result.url
+
+        val destination = result.url.toHttpUrlOrNull() ?: return result.url
+        val previousRequest = state.url?.toHttpUrlOrNull() ?: visitedPage.url
+        if (destination.hasSameOrigin(previousRequest) && destination.hasSameOrigin(visitedPage.url)) return result.url
+
+        // Keep the destination's origin and auth parameters. Query parameters from the old
+        // origin can contain credentials, so only restore the frontend path.
+        return destination.newBuilder().encodedPath(visitedPage.url.encodedPath).build().toString()
+    }
+
     private suspend fun handleUrlResult(result: UrlLoadResult) {
         when (result) {
             is UrlLoadResult.Success -> {
@@ -1028,7 +1056,7 @@ internal class FrontendViewModel @VisibleForTesting constructor(
                 _viewState.update { currentState ->
                     FrontendViewState.Loading(
                         serverId = result.serverId,
-                        url = result.url,
+                        url = restorePathOnOriginChange(result, currentState),
                         target = currentState.pendingTarget,
                     )
                 }
